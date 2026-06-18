@@ -101,14 +101,28 @@ Measured via |Pearson| for numerics and **correlation ratio η** for categorical
 - **High cardinality** (`Suburb`, `SellerG`, `CouncilArea`): **frequency encoding** (done first; safe, no leakage).
 - **Low cardinality** (`Type`, `Method`, `Regionname`): **one-hot**.
 - *Note:* consider **target encoding** at modeling time — must include **smoothing + out-of-fold** to avoid leakage.
-- `Address` → drop; `Date` → parse year/month; `Postcode` → treat as category.
+- `Address` → **dropped** in the processed set (see section 9); `Date` → parse year/month; `Postcode` → treat as category.
 
 ## 8. Next steps
 
 1. **Log-transform the target `Price`**.
-2. Handle `Postcode`/`Date`/`Address`; consider `Age = 2018 − YearBuilt`.
+2. Handle `Postcode` (as category) and `Date` (parse year/month). *(`Age` and dropping `Address` already applied — see section 9.)*
 3. Add `is_missing` flags for `BuildingArea`/`YearBuilt`.
 4. Wrap preprocessing in a **`Pipeline` + train/test split** (impute/encode/scale fit **on train only**) to prevent leakage.
+
+## 9. Processed dataset — `dataset/melb_data_processed.csv`
+
+The notebook exports a clean, model-ready dataset (section 11 in the notebook):
+
+- **Shape:** 13,580 rows × **20 columns**, **0 missing**.
+- **Steps applied:**
+  - Extreme removal + `log1p` for Landsize/BuildingArea (→ `Landsize_log`, `BuildingArea_log`; raw dropped).
+  - **KNN imputation** (`weights='distance'`, scaled first) for all remaining numeric missing.
+  - `CouncilArea` missing → `'Unknown'`.
+  - **`YearBuilt` → `Age = 2018 − YearBuilt`** (year replaced by house age).
+  - **Dropped `Address`** (near-unique cardinality, no modeling value).
+- **Not done yet (left to the training Pipeline):** categorical encoding, scaling/normalization, target log-transform.
+- ⚠️ **Leakage:** this set is imputed on the full data (including `Price`). For a fully clean setup, move impute/encode/scale into a `Pipeline` fit on train only.
 
 ---
 
