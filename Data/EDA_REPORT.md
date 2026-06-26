@@ -7,7 +7,7 @@
 
 | Dataset | Bài toán | Kích thước (sau xử lý) | Đặc thù |
 |---|---|---|---|
-| **Obesity** | Phân loại (7 lớp) | 2.087 × 17 → encode 2.087 × **20** | Nhiều biến phân loại → **binary mapping** |
+| **Obesity** | Hồi quy (target `Weight`) | 2.087 × 17 → encode 2.087 × **21** | Encode theo loại biến; `NObeyesdad`/`Height` ~ leakage |
 | **Communities & Crime** | Hồi quy | 1.994 × **101** | p vừa, nhiều feature yếu + đa cộng tuyến |
 | **Riboflavin** | Hồi quy | 71 × **3.680** | **p ≫ n** (gen biểu hiện), bắt buộc regularization |
 
@@ -15,18 +15,24 @@
 
 # 1. Obesity (`ObesityDataSet.csv`)
 
-**Mục tiêu:** dự đoán mức béo phì `NObeyesdad` (7 lớp có thứ tự). Đây là bộ duy nhất có biến phân loại, nên là nơi
-áp dụng **binary mapping** thay cho one-hot.
+**Mục tiêu:** bài toán **hồi quy** — dự đoán **cân nặng `Weight` (kg)** từ đặc trưng nhân trắc học, thói quen ăn uống
+và lối sống. Biến `NObeyesdad` (mức béo phì, 7 lớp có thứ tự) vốn là nhãn phân loại của bộ gốc, **nay dùng làm feature**
+(ordinal 0..6). Đây là bộ duy nhất có biến phân loại nên là nơi minh hoạ **encode theo loại biến** (binary / ordinal / one-hot).
 
 ## 1.1 Tổng quan & chất lượng dữ liệu
 - **Kích thước gốc:** 2.111 dòng × 17 cột (8 số, 9 phân loại). **0 ô missing**.
 - **Trùng lặp:** 24 dòng trùng (do phần dữ liệu tổng hợp SMOTE của bộ gốc) → **loại bỏ** còn **2.087 dòng**.
 - **Không** có outlier lỗi: `Age` có vài giá trị cao (tới 61) nhưng là người thật; `Weight` 39–173 kg, `Height` 1,45–1,98 m.
 
-## 1.2 Cân bằng lớp target — *thuận lợi*
-![Cân bằng lớp](eda_assets/ob_classbalance.png)
+## 1.2 Phân phối target `Weight` & phân bố feature `NObeyesdad`
+![Phân phối Weight](eda_assets/ob_weight_dist.png)
+![Phân bố NObeyesdad](eda_assets/ob_classbalance.png)
 
-| Lớp | Số mẫu |
+Target `Weight` ∈ [39; 173] kg, mean ≈ 86,9, **gần đối xứng** (skew ≈ +0,24) → phù hợp hồi quy, không cần biến đổi.
+
+Feature `NObeyesdad` (7 mức) phân bố **khá đều**:
+
+| Mức | Số mẫu |
 |---|---|
 | Insufficient_Weight | 267 |
 | Normal_Weight | 282 |
@@ -36,7 +42,7 @@
 | Obesity_Type_II | 297 |
 | Obesity_Type_III | 324 |
 
-→ **Khá cân bằng** (267–351 mẫu/lớp), không cần xử lý mất cân bằng lớp.
+→ 267–351 mẫu/mức, không có mức quá hiếm.
 
 ## 1.3 Biến số — thống kê & độ lệch
 
@@ -66,47 +72,53 @@
 | CALC (rượu) | thứ bậc (4) | Sometimes 1380 / no 636 / Frequently 70 / **Always 1** |
 | MTRANS | danh nghĩa (5) | Public 1558 / Auto 456 / Walking 55 / Motorbike 11 / Bike 7 |
 
-## 1.5 Quan hệ với target & tương quan
-![Weight theo lớp](eda_assets/ob_weight_by_class.png)
-![Ảnh hưởng lên target](eda_assets/ob_assoc.png)
+## 1.5 Quan hệ với target `Weight`
+![Weight theo NObeyesdad](eda_assets/ob_weight_by_class.png)
+![Ảnh hưởng lên Weight](eda_assets/ob_assoc.png)
 
-**Xếp hạng ảnh hưởng** (η cho biến số, Cramér's V cho phân loại — đều ∈ [0,1]):
+Target nay là **numeric** → đo mức ảnh hưởng lên `Weight` bằng **|Pearson|** (feature số) và **η — correlation ratio**
+(feature phân loại), cả hai ∈ [0,1]. **Xếp hạng ảnh hưởng lên `Weight`:**
 
 | Hạng | Feature | Độ mạnh | Loại |
 |---|---|---|---|
-| 1 | **Weight** | **0,921** | numeric (η) |
-| 2 | Gender | 0,561 | category (V) |
-| 3 | family_history_with_overweight | 0,544 | category (V) |
-| 4 | FCVC | 0,492 | numeric (η) |
-| 5 | Age | 0,424 | numeric (η) |
-| 6 | CAEC | 0,340 | category (V) |
-| 7 | FAVC | 0,333 | category (V) |
+| 1 | **NObeyesdad** | **0,921** | category (η) |
+| 2 | family_history_with_overweight | 0,493 | category (η) |
+| 3 | Height | 0,457 | numeric (\|Pearson\|) |
+| 4 | CAEC | 0,413 | category (η) |
+| 5 | FAVC | 0,275 | category (η) |
+| 6 | CALC | 0,268 | category (η) |
+| 7 | FCVC | 0,217 | numeric (\|Pearson\|) |
+| 8 | SCC | 0,205 | category (η) |
 | … | … | … | … |
-| 15 | TUE | 0,150 | numeric (η) |
-| 16 | SMOKE | 0,124 | category (V) |
+| 12 | MTRANS | 0,115 | category (η) |
+| 16 | SMOKE | 0,024 | category (η) |
 
-> ⚠️ **Cảnh báo leakage khái niệm:** `Weight` (η=0,921) gần như **định nghĩa** nhãn béo phì. Nếu muốn dự đoán từ
-> **lối sống**, nên cân nhắc bỏ `Weight`/`Height`. Khi đó các tín hiệu "thật" mạnh nhất là **tiền sử gia đình, giới tính,
-> thói quen ăn rau (FCVC) và tuổi**. Yếu nhất: `SMOKE`, `TUE`, `MTRANS`.
+> ⚠️ **Cảnh báo leakage khái niệm:** `NObeyesdad` (η=0,921) và `Height` gần như **định nghĩa** `Weight` qua
+> BMI = `Weight`/`Height`². Giữ `NObeyesdad` làm feature (theo yêu cầu) sẽ cho fit rất cao một cách "dễ dàng" — cần lưu ý
+> khi diễn giải. Nếu muốn dự đoán `Weight` "công bằng" từ lối sống, nên cân nhắc bỏ `NObeyesdad`/`Height`; khi đó tín hiệu
+> "thật" mạnh nhất là **tiền sử gia đình** (0,493), **thói quen ăn vặt/ăn nhanh** (CAEC 0,413, FAVC 0,275) và ăn rau/tuổi.
 
-![Tương quan biến số](eda_assets/ob_corr.png)
-Các biến số tương quan **yếu** với nhau (trừ Weight–Height vừa phải) → ít dư thừa thông tin.
+![Tương quan biến số (gồm Weight)](eda_assets/ob_corr.png)
+`Weight` tương quan dương **vừa** với `Height`; các biến hành vi (`FCVC`,`FAF`,`TUE`,`NCP`,`CH2O`) tương quan **yếu**
+với nhau và với `Weight` → tín hiệu numeric "thật" cho `Weight` chủ yếu đến từ `Height`.
 
-## 1.6 ⭐ Encoding — Binary mapping (thay cho one-hot)
+## 1.6 ⭐ Encoding — theo loại biến
 
 **Vấn đề của one-hot với biến nhị phân:** one-hot một biến 2 mức tạo **2 cột** thoả `A + B = 1` →
-**tương quan = −1 (đa cộng tuyến hoàn hảo)**; 1 cột hoàn toàn dư thừa, làm hệ số Linear/Lasso bất ổn.
+**tương quan = −1 (đa cộng tuyến hoàn hảo)**; 1 cột hoàn toàn dư thừa, làm hệ số Linear/Lasso bất ổn → dùng binary mapping.
 
-**Sơ đồ encoding mới:**
+**Sơ đồ encoding:**
 
 | Nhóm | Biến | Cách encode | Số cột |
 |---|---|---|---|
-| Nhị phân | Gender, family_history, FAVC, SMOKE, SCC | **0/1 (binary mapping)** | 5 (trước: 10) |
-| Thứ bậc | CAEC, CALC | ordinal `no=0<Sometimes=1<Frequently=2<Always=3` | 2 (trước: 8) |
-| Danh nghĩa | MTRANS (5 mức) | one-hot `drop_first=True` | 4 (trước: 5) |
-| Target | NObeyesdad | ordinal 0..6 theo thứ tự béo | 1 |
+| Nhị phân | Gender, family_history, FAVC, SMOKE, SCC | **0/1 (binary mapping)** | 5 |
+| Thứ bậc | CAEC, CALC | ordinal `no=0<Sometimes=1<Frequently=2<Always=3` | 2 |
+| Thứ bậc (feature) | NObeyesdad | ordinal 0..6 theo thứ tự mức béo | 1 |
+| Danh nghĩa thuần | MTRANS (5 mức) | **one-hot giữ đủ 5 mức (không drop_first)** | 5 |
+| Numeric (gồm target `Weight`) | Age, Height, Weight, FCVC, NCP, CH2O, FAF, TUE | giữ nguyên | 8 |
 
-→ Kết quả: `obesity_encoded.csv` giảm từ **32 → 20 cột**, **toàn số, không còn cặp cột đa cộng tuyến hoàn hảo**.
+→ Kết quả: `obesity_encoded.csv` — **2.087 × 21 cột** (20 feature + target `Weight`), **toàn số**, không còn cặp cột
+đa cộng tuyến hoàn hảo sinh từ biến nhị phân.
 
 ---
 
@@ -198,14 +210,14 @@ Các biến số tương quan **yếu** với nhau (trừ Weight–Height vừa 
 
 | Tiêu chí | Obesity | Communities | Riboflavin |
 |---|---|---|---|
-| Bài toán | Phân loại 7 lớp | Hồi quy | Hồi quy |
-| n × p (sau xử lý) | 2.087 × 19 feat | 1.994 × 100 feat | 71 × 3.679 feat |
+| Bài toán | Hồi quy (`Weight`) | Hồi quy | Hồi quy |
+| n × p (sau xử lý) | 2.087 × 20 feat | 1.994 × 100 feat | 71 × 3.679 feat |
 | Missing | 0 | điền/bỏ (22 cột) | 0 |
-| Vấn đề chính | leakage Weight; encode biến phân loại | feature yếu + đa cộng tuyến | **p ≫ n**, overfit |
-| Xử lý đặc thù | bỏ trùng + **binary mapping** | bỏ cột thiếu 84% + median | lọc gen var thấp |
+| Vấn đề chính | leakage `NObeyesdad`/`Height`; encode biến phân loại | feature yếu + đa cộng tuyến | **p ≫ n**, overfit |
+| Xử lý đặc thù | bỏ trùng + encode theo loại biến | bỏ cột thiếu 84% + median | lọc gen var thấp |
 | Phù hợp để test | Boruta/Lasso trên dữ liệu hỗn hợp | Lasso/RFE vs LR full | Lasso/Boruta + CV bắt buộc |
 
 **Khuyến nghị chung:**
-1. **Obesity** — dùng `obesity_encoded.csv` (20 cột). Cân nhắc bỏ `Weight`/`Height` nếu mục tiêu là dự đoán từ lối sống.
+1. **Obesity** — dùng `obesity_encoded.csv` (21 cột). Cân nhắc bỏ `NObeyesdad`/`Height` nếu mục tiêu là dự đoán `Weight` từ lối sống.
 2. **Communities** — `StandardScaler` + Lasso để xử lý 18 feature nhiễu và 49 cặp đa cộng tuyến.
 3. **Riboflavin** — ưu tiên **dự đoán bằng chính Lasso (regularized)**, tránh refit OLS trần trên feature đã chọn; báo cáo CV nhiều seed.
