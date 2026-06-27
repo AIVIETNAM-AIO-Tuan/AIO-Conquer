@@ -125,6 +125,57 @@ Notebook xuất ra một bộ dữ liệu sạch, sẵn sàng cho bước model 
 
 ---
 
+# Các bộ dữ liệu thí nghiệm Feature Selection (Obesity · Communities · Riboflavin)
+
+> Phần trên là EDA cho **Melbourne Housing**. Ba bộ dưới đây mới là dữ liệu dùng cho thí nghiệm
+> **lựa chọn đặc trưng trên Linear Regression (Lasso / Boruta)**. EDA & tiền xử lý chi tiết xem
+> [EDA_REPORT.md](EDA_REPORT.md) và các notebook [preproc_obesity.ipynb](preproc_obesity.ipynb),
+> [preproc_communities.ipynb](preproc_communities.ipynb), [preproc_riboflavin.ipynb](preproc_riboflavin.ipynb).
+
+## Tóm tắt
+
+| Dataset | Bài toán | n × p (sau xử lý) | Target | Xử lý chính |
+| --- | --- | --- | --- | --- |
+| Obesity | Hồi quy ($n \gg p$) | 2.087 × 20 | `Weight` | bỏ trùng + encode theo loại biến |
+| Communities & Crime | Hồi quy ($n \approx p$) | 1.994 × 100 | `ViolentCrimesPerPop` | bỏ 5 cột định danh + 22 cột thiếu ~84% + điền median |
+| Riboflavin | Hồi quy ($p \gg n$) | 71 × 4.088 | `y` | giữ toàn bộ gen (**không lọc** phương sai) |
+
+Quy tắc encoding (Obesity): **nhị phân → binary mapping (0/1)**; **thứ bậc/ordinal → mapping theo thứ tự**
+(gồm `NObeyesdad` 0..6, nay là feature); **danh nghĩa thuần → one-hot giữ đủ mức (không `drop_first`)**.
+
+## Vấn đề dữ liệu CHƯA được tiền xử lý giải quyết (Limitations)
+
+Tiền xử lý hiện tại mới giải quyết **missing / trùng lặp / encoding**. Các vấn đề **bản chất** sau **vẫn còn**
+(một số cố ý nhường cho bước lựa chọn đặc trưng) — cần lưu ý khi diễn giải kết quả.
+
+**Chung (giả định của hồi quy tuyến tính):**
+
+- **Phi tuyến & tương tác:** không bước nào kiểm tra/biến đổi → nếu quan hệ thật phi tuyến, mô hình underfit và selection có thể loại nhầm biến hữu ích.
+- **Target lệch không transform:** Communities (skew $\approx$ +1,52), Riboflavin ($\approx$ −0,84) → có thể vi phạm đồng phương sai (homoscedasticity) của phần dư, làm RMSE/$R^2$ thiên lệch.
+- **Đa cộng tuyến:** scaling/encoding **không** khử được — chỉ giảm *gián tiếp* qua Lasso/selection, không "giải quyết" ở khâu tiền xử lý.
+
+**Obesity:**
+
+- ⚠️ **Rò rỉ khái niệm:** `NObeyesdad`/`Height` gần như **định nghĩa** `Weight` (qua BMI) → $R^2$ cao "ảo", **lu mờ tác dụng** của feature selection.
+- ⚠️ **Đa cộng tuyến do `MTRANS` one-hot không `drop_first`:** 5 cột dummy cộng lại $=1=$ cột intercept → ma trận thiết kế **suy biến** (dummy trap); hệ số OLS thuần mất ý nghĩa diễn giải (Lasso/regularization thì không sao).
+- **Biến phân loại cực mất cân bằng:** `SMOKE` (44 "yes"), `CALC` ("Always"=1 mẫu) → hệ số các mức hiếm không tin cậy.
+- **Dữ liệu một phần là synthetic (SMOTE)** — chưa kiểm chứng so với phân phối thật.
+
+**Communities & Crime:**
+
+- **49 cặp |corr|>0,9 vẫn còn nguyên** → OLS "full" có hệ số bất ổn (đúng mục tiêu thí nghiệm, nhưng dữ liệu chưa "sạch" về collinearity).
+- **Mất thông tin** do bỏ 22 cột chỉ số cảnh sát (có thể có giá trị dự đoán, không khôi phục được).
+- Target lệch phải mạnh chưa được log-transform.
+
+**Riboflavin:**
+
+- **$p \gg n$ là vấn đề gốc, tiền xử lý KHÔNG giải quyết** (nay còn rõ hơn vì không lọc gen) → OLS không có nghiệm duy nhất, phụ thuộc hoàn toàn vào regularization.
+- **Bất ổn của chính feature selection:** với 4.088 gen / 71 mẫu, tập gen Lasso/Boruta chọn **dao động mạnh theo seed/fold** — khó tái lập; CV nhiều seed chỉ *đo* được độ bất ổn chứ không khử.
+- **Đa cộng tuyến giữa gen cùng pathway** chưa xử lý.
+- **Test chỉ ~15 mẫu** → mọi chỉ số một-lần-split rất nhiễu.
+
+---
+
 ## Phụ lục — Layout thư mục dữ liệu
 
 | Subfolder | Purpose |
